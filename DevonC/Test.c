@@ -15,7 +15,7 @@ using namespace pegtl;
 void testfunc(int a, char xxxx);
 
 int a, b = 0;		// xxxyyy
-char * xxx[5];
+char * xxx[0xFaB0][37];
 
 void testfunc(int a, char xxxx)
 {
@@ -24,7 +24,7 @@ xxxx:
 	bli/*bli;f*/dkjhgs;
 	return ;
 
-	char * PointerTest = nullptr;
+	char ** PointerTest = nullptr;
 	bool MyBoolean = false;
 
 	while(369 )
@@ -32,6 +32,8 @@ xxxx:
 		fds;
 	jnf;
 	}
+
+	goto xxxx;
 
 	do
 	{glglgl;}
@@ -41,11 +43,18 @@ xxxx:
 		ifst;
 	else
 	{
-		eslest;}
+		eslest;
+	}
 
+	for (int a = 39; 654; a[4][2].mymember[3].secondarymember = 897)
+	{
+	}
 } 
 
 int main(int argc/*, char* argv[]*/)
 {
+	a = 356, b = true;
+	c = d = 39 || true && 67;
+	x = !! nullptr;
 	return false;
 }

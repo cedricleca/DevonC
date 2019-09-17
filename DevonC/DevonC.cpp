@@ -15,20 +15,11 @@ using namespace pegtl;
 
 template< typename Rule > struct maction {};
 
-struct pp_blanks : plus< blank > {};
 struct pp_blank_line : until< eol, blank > {};
 struct pp_comment : seq< one<'/'>, one<'/'>, until< eolf > > {};
 struct pp_long_comment : seq< one<'/'>, one<'*'>, until < sor < eof, seq< one<'*'>, one<'/'> > >>> {};
 struct pp_code : any {};
 struct preprocess : star< sor<pp_comment, pp_long_comment, pp_code>> {};
-
-template<> struct maction< pp_blanks >
-{
-    template< typename Input > static void apply( const Input& in , std::string & out)
-    {
-		out += " ";
-    }
-};
 
 template<> struct maction< pp_comment >
 {
@@ -78,23 +69,78 @@ struct type_base  : sor< type_int, type_char, type_short, type_void, type_bool >
 struct type_pointer : seq< type_base, plus< sblk, one<'*'>> > {};
 struct typespecifier : sor< type_pointer, type_base > {};
 
-struct staticarraysize : seq< sblk, plus<digit> > {};
-struct varid : seq< identifier, opt< sblk, one<'['>, sblk, staticarraysize, sblk, one<']'> >> {};
-struct literalnumber : seq< opt< one<'-'> >, plus<digit>> {};
+struct literalchar : seq< one<'\''>, plus<seven>, one<'\''>> {};
+struct literalhexa : seq< one<'0'>, one<'x'>, must<plus<xdigit>> > {};
+struct literaldecimal : seq< opt< one<'-'> >, plus<digit>> {};
 struct literaltrue : TAO_PEGTL_STRING("true") {};
 struct literalfalse : TAO_PEGTL_STRING("false") {};
 struct literalnullptr : TAO_PEGTL_STRING("nullptr") {};
-struct literalexp : sor<literaltrue, literalfalse, literalnullptr, literalnumber> {};
+struct staticarraysize : sor< literalchar, literalhexa, literaldecimal > {};
+struct vardeclid : seq< identifier, star< sblk, one<'['>, sblk, staticarraysize, sblk, one<']'> >> {};
+struct literalexp : sor<literaltrue, literalfalse, literalnullptr, literalchar, literalhexa, literaldecimal> {};
 struct varinit : seq< sblk, one<'='>, sblk, literalexp> {};
 struct vartype : typespecifier {};
-struct vardecl : seq<sblk, vartype, pblk, list< varid, opt<varinit>, seq< sblk, one<','>, sblk > >, until< one<';'> > > {};
-struct globalvardecl : vardecl {};
-struct localvardecl : vardecl {};
+struct vardecl : seq<sblk, vartype, pblk, list< seq< vardeclid, opt<varinit> >, seq< sblk, one<','>, sblk > > > {};
+struct globalvardecl : seq< vardecl, one<';'> > {};
+struct localvardecl : seq< vardecl, one<';'> > {};
+struct forvardecl : vardecl {};
 
-struct expression : literalexp {};
+struct memberid : identifier {};
+struct varid : identifier {};
+struct arrayindex;
+struct arrayaccess : seq< one<'['>, sblk, arrayindex, sblk, one<']'> >{};
+struct varaccess : seq<varid, star<sblk, arrayaccess>, star< sblk, one<'.'>, sblk, memberid, star<sblk, arrayaccess> >> {};
+struct lvalue : varaccess {};
+
+struct expression;
+struct subexpression;
+struct parenthesedexpression : seq<one<'('>, sblk, expression, sblk, one<')'>> {};
+struct funcid;
+struct funcarglist : seq< sblk, subexpression, star<sblk, one<','>, sblk, subexpression>, sblk>{};
+struct funccall : seq< funcid, sblk, one<'('>, opt<funcarglist>, one<')'> > {};
+struct rvalue : sor< parenthesedexpression, funccall, literalexp> {};
+struct assignment : seq<lvalue, sblk, one<'='>, sblk, expression> {};
+struct lowereqop : seq<one<'<'>, one<'='>> {};
+struct lowerop : one<'<'> {};
+struct greatereqop : seq<one<'>'>, one<'='>> {};
+struct greaterop : one<'>'> {};
+struct eqop : two<'='> {};
+struct noteqop : seq<one<'!'>, one<'='>> {};
+struct relop : sor<lowereqop, lowerop, greaterop, greatereqop, eqop, noteqop> {};
+struct addop : one<'+'> {};
+struct subop : one<'-'> {};
+struct mulop : one<'*'> {};
+struct divop : one<'/'> {};
+struct modop : one<'%'> {};
+struct minusop : one<'-'> {};
+struct indirectop : one<'*'> {};
+struct addressop : one<'&'> {};
+struct unaryop : sor<minusop, indirectop, addressop> {};
+struct sumop : sor<addop, subop> {};
+struct prodop : sor<mulop, divop, modop> {};
+struct factor : sor<rvalue, lvalue> {};
+struct unaryexpression : sor < seq < unaryop, sblk, unaryexpression >, factor> {};
+struct termexpression : sor < seq < termexpression, sblk, prodop, sblk, unaryexpression >, unaryexpression> {};
+struct sumexpression : sor < seq < sumexpression, sblk, sumop , sblk, termexpression >, termexpression> {};
+//struct relexpression : sor< seq<sumexpression, sblk, relop, sblk, sumexpression>, sumexpression> {};
+struct relexpression : literalexp {};
+struct applynotexpression;
+struct notexpression : if_then_else<one<'!'>, seq<sblk, applynotexpression>, seq<sblk, relexpression>> {};
+struct applynotexpression : notexpression {};
+struct applyandexpression;
+struct andexpression : seq<notexpression, star<sblk, two<'&'>, sblk, applyandexpression>> {};
+struct applyandexpression : notexpression {};
+struct applyorexpression;
+struct orexpression : seq<andexpression, star<sblk, two<'|'>, sblk, applyorexpression>> {};
+struct applyorexpression : andexpression {};
+struct subexpression : sor<assignment, orexpression, literalexp> {};
+struct expression : list< subexpression, seq<sblk, one<','>, sblk> > {};
+struct arrayindex : expression {};
+
 struct whilecond : expression {};
 struct dowhilecond : expression {};
 struct ifcond : expression {};
+struct forcond : expression {};
 
 struct functype : typespecifier {};
 struct funcid : identifier {};
@@ -102,15 +148,18 @@ struct labelid : identifier {};
 struct label : seq< labelid, sblk, one<':'>> {};
 struct statement;
 struct unknownstatement : seq<plus<alnum>, sblk, one<';'> > {};
+struct expressionstatement : seq< opt<expression, sblk>, one<';'> > {};
+struct gotostatement : seq<TAO_PEGTL_STRING("goto"), sblk, labelid, sblk, one<';'> > {};
 struct returnstatement : seq<TAO_PEGTL_STRING( "return" ), opt< sblk, expression>, sblk, one<';'> > {};
 struct breakstatement : seq<TAO_PEGTL_STRING( "break" ), sblk, one<';'> > {};
 struct whilestatement : seq<TAO_PEGTL_STRING( "while" ), must< sblk, one<'('>, sblk, plus< whilecond, sblk>, one<')'>, sblk, statement > > {};
-struct forstatement : seq<TAO_PEGTL_STRING( "for" ), must< sblk, one<'('>, sblk, one<')'>, sblk, statement > > {};
+struct nextstatement : expression {};
+struct forstatement : seq<TAO_PEGTL_STRING( "for" ), must< sblk, one<'('>, sblk, sor< forvardecl, expression >, sblk, one<';'>, sblk, forcond, sblk, one<';'>, sblk, nextstatement, sblk, one<')'>, sblk, statement > > {};
 struct dowhilestatement : seq<TAO_PEGTL_STRING( "do" ), must< sblk, statement, sblk, TAO_PEGTL_STRING( "while" ), sblk, one<'('>, sblk, plus< dowhilecond, sblk>, one<')'>, sblk, one<';'> > > {};
 struct elsestatement : seq<TAO_PEGTL_STRING( "else" ), sblk, statement > {};
 struct ifstatement : seq<TAO_PEGTL_STRING( "if" ), sblk, one<'('>, sblk, plus< ifcond, sblk>, one<')'>, sblk, statement, opt< sblk, elsestatement > > {};
 struct localscope;
-struct statement : sor< localscope, localvardecl, breakstatement, returnstatement, dowhilestatement, whilestatement, ifstatement, unknownstatement > {};
+struct statement : sor< localscope, localvardecl, breakstatement, returnstatement, forstatement, dowhilestatement, whilestatement, ifstatement, gotostatement, expressionstatement, unknownstatement > {};
 struct scopestart : one<'{'> {};
 struct scope : seq< scopestart, star< sblk, sor< label, statement >>, sblk, one<'}'>> {};				  
 struct funcscope : scope {};
@@ -148,12 +197,60 @@ template<> struct maction< sblk >
     }
 };
 
+template<> struct maction< literaldecimal >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "LITERALDECIMAL : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< applynotexpression >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "! EXPR : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< applyorexpression >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "|| EXPR : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< applyandexpression >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "&& EXPR : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< literalexp >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "LITERALEXP : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< gotostatement >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "GOTOSTATEMENT : " << in.string() << std::endl;
+	}
+};
+
 template<> struct maction< ifcond >
 {
-    template< typename Input > static void apply( const Input& in )
-    {
+	template< typename Input > static void apply(const Input& in)
+	{
 		std::cout << "IFCOND : " << in.string() << std::endl;
-    }
+	}
 };
 
 template<> struct maction< dowhilecond >
@@ -166,10 +263,82 @@ template<> struct maction< dowhilecond >
 
 template<> struct maction< whilecond >
 {
-    template< typename Input > static void apply( const Input& in )
-    {
+	template< typename Input > static void apply(const Input& in)
+	{
 		std::cout << "WHILECOND : " << in.string() << std::endl;
-    }
+	}
+};
+
+template<> struct maction< memberid >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "MEMBERID : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< arrayindex >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "ARRAYINDEX : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< arrayaccess >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "ARRAYACCESS : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< varid >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "VARID : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< lvalue >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "LVALUE : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< assignment >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "ASSIGNMENT : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< forstatement >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "FORSTATEMENT" << std::endl;
+	}
+};
+
+template<> struct maction< forcond >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "FORCOND : " << in.string() << std::endl;
+	}
+};
+
+template<> struct maction< nextstatement >
+{
+	template< typename Input > static void apply(const Input& in)
+	{
+		std::cout << "NEXTSTATEMENT : " << in.string() << std::endl;
+	}
 };
 
 template<> struct maction< ifstatement >
@@ -381,7 +550,7 @@ template<> struct maction< funcdecl >
 {
     template< typename Input > static void apply( const Input& in )
     {
-		std::cout << "FUNCDECL    " << in.string() << std::endl;
+		std::cout << "FUNCDECL IS VALID" << std::endl;
     }
 };
 
@@ -452,7 +621,7 @@ template<> struct mcontrol< preprocess > : normal< preprocess >
     template< typename Input >
     static void raise( const Input& in, std::string & out)
     {
-        throw parse_error( "parse error matching " + internal::demangle< program >(), in );
+        throw parse_error(  internal::demangle< program >(), in );
     }
 };
 
@@ -479,7 +648,7 @@ template<> struct mcontrol< program > : normal< program >
     template< typename Input >
     static void raise( const Input& in)
     {
-        throw parse_error( "parse error matching " + internal::demangle< program >(), in );
+        throw parse_error(  internal::demangle< program >(), in );
     }
 };
 
