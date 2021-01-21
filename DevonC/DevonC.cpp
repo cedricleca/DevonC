@@ -2,7 +2,7 @@
 #include <time.h>
 
 #include "Compiler.h"
-#include "../PEGTL-master/include/tao/pegtl.hpp"
+#include "PEGTL/include/tao/pegtl.hpp"
 
 namespace pegtl = TAO_PEGTL_NAMESPACE;
 using namespace pegtl;
@@ -32,7 +32,7 @@ template<> struct maction< pp_long_comment >
 		std::string lc = in.string();
 		std::cout << "PP_LONG_COMMENT : "<< lc << std::endl;
 		size_t n = std::count(lc.begin(), lc.end(), '\n');
-		for(int i = 0; i < n; i++)
+		for(size_t i = 0; i < n; i++)
 			out += "\n";
     }
 };
@@ -773,11 +773,11 @@ template<> struct mcontrol< preprocess > : normal< preprocess >
     {
 		std::cout << "FAILURE OF PREPROCESS.\n";
     }
-
+	
     template< typename Input >
     static void raise( const Input& in, std::string & out)
     {
-        throw parse_error(  internal::demangle< program >(), in );
+        throw parse_error(  demangle< program >(), in );
     }
 };
 
@@ -804,7 +804,7 @@ template<> struct mcontrol< program > : normal< program >
     template< typename Input >
     static void raise( const Input& in, Compiler & Compiler)
     {
-        throw parse_error(  internal::demangle< program >(), in );
+        throw parse_error(  demangle< program >(), in );
     }
 };
 

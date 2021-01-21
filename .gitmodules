@@ -1,0 +1,3 @@
+[submodule "DevonC/PEGTL"]
+	path = DevonC/PEGTL
+	url = https://github.com/taocpp/PEGTL.git
